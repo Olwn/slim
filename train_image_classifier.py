@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
+
+import os
 import tensorflow as tf
 
 from datasets import dataset_factory
@@ -34,6 +37,8 @@ tf.app.flags.DEFINE_string(
     'train_dir', '/tmp/tfmodel/',
     'Directory where checkpoints and event logs are written to.')
 
+tf.app.flags.DEFINE_boolean("sharpness", False, "whether to compute sharpness")
+
 tf.app.flags.DEFINE_integer('num_clones', 1,
                             'Number of model clones to deploy.')
 
@@ -48,11 +53,11 @@ tf.app.flags.DEFINE_integer(
     'are handled locally by the worker.')
 
 tf.app.flags.DEFINE_integer(
-    'num_readers', 4,
+    'num_readers', 20,
     'The number of parallel readers that read data from the dataset.')
 
 tf.app.flags.DEFINE_integer(
-    'num_preprocessing_threads', 4,
+    'num_preprocessing_threads', 20,
     'The number of threads used to create the batches.')
 
 tf.app.flags.DEFINE_integer(
@@ -70,6 +75,10 @@ tf.app.flags.DEFINE_integer(
 tf.app.flags.DEFINE_integer(
     'task', 0, 'Task id of the replica running the training.')
 
+tf.app.flags.DEFINE_string(
+  'gpu', "", "gpu list"
+)
+
 ######################
 # Optimization Flags #
 ######################
@@ -78,7 +87,7 @@ tf.app.flags.DEFINE_float(
     'weight_decay', 0.00004, 'The weight decay on the model weights.')
 
 tf.app.flags.DEFINE_string(
-    'optimizer', 'rmsprop',
+    'optimizer', 'sgd',
     'The name of the optimizer, one of "adadelta", "adagrad", "adam",'
     '"ftrl", "momentum", "sgd" or "rmsprop".')
 
@@ -121,6 +130,8 @@ tf.app.flags.DEFINE_float('rmsprop_momentum', 0.9, 'Momentum.')
 
 tf.app.flags.DEFINE_float('rmsprop_decay', 0.9, 'Decay term for RMSProp.')
 
+tf.app.flags.DEFINE_boolean('noisy_gradient', False, 'whether to add noise to gradient')
+
 #######################
 # Learning Rate Flags #
 #######################
@@ -143,10 +154,6 @@ tf.app.flags.DEFINE_float(
 tf.app.flags.DEFINE_float(
     'learning_rate_decay_factor', 0.94, 'Learning rate decay factor.')
 
-tf.app.flags.DEFINE_float(
-    'num_epochs_per_decay', 2.0,
-    'Number of epochs after which learning rate decays.')
-
 tf.app.flags.DEFINE_bool(
     'sync_replicas', False,
     'Whether or not to synchronize the replicas during training.')
@@ -159,6 +166,9 @@ tf.app.flags.DEFINE_float(
     'moving_average_decay', None,
     'The decay to use for the moving average.'
     'If left as None, then moving averages are not used.')
+tf.app.flags.DEFINE_integer(
+  'decay_steps', 2000, "decay learning rate every decay steps"
+)
 
 #######################
 # Dataset Flags #
@@ -192,7 +202,7 @@ tf.app.flags.DEFINE_integer(
 tf.app.flags.DEFINE_integer(
     'train_image_size', None, 'Train image size')
 
-tf.app.flags.DEFINE_integer('max_number_of_steps', None,
+tf.app.flags.DEFINE_integer('max_number_of_steps', 100000,
                             'The maximum number of training steps.')
 
 #####################
@@ -219,6 +229,7 @@ tf.app.flags.DEFINE_boolean(
 
 FLAGS = tf.app.flags.FLAGS
 
+os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpu
 
 def _configure_learning_rate(num_samples_per_epoch, global_step):
   """Configures the learning rate.
@@ -233,8 +244,8 @@ def _configure_learning_rate(num_samples_per_epoch, global_step):
   Raises:
     ValueError: if
   """
-  decay_steps = int(num_samples_per_epoch / FLAGS.batch_size *
-                    FLAGS.num_epochs_per_decay)
+  # decay_steps = int(num_samples_per_epoch / FLAGS.batch_size * FLAGS.num_epochs_per_decay)
+  decay_steps = FLAGS.decay_steps
   if FLAGS.sync_replicas:
     decay_steps /= FLAGS.replicas_to_aggregate
 
@@ -493,6 +504,10 @@ def main(_):
     for variable in slim.get_model_variables():
       summaries.add(tf.summary.histogram(variable.op.name, variable))
 
+    # Add 1-norm of all parameters
+    all_v_flat = tf.concat([tf.reshape(v, [-1]) for v in slim.get_model_variables()], axis=0)
+    summaries.add(tf.summary.histogram("all", all_v_flat))
+
     #################################
     # Configure the moving averages #
     #################################
@@ -535,6 +550,16 @@ def main(_):
     # Add total_loss to summary.
     summaries.add(tf.summary.scalar('total_loss', total_loss))
 
+    # Add noise to gradients
+    if FLAGS.noisy_gradient:
+      gradients = []
+      for grad, var in clones_gradients:
+        _, sigma = tf.nn.moments(grad, None)
+        stddev = tf.sqrt(sigma) * 0.1 * tf.cast((1.0 - global_step / FLAGS.max_number_of_steps), dtype=grad.dtype)
+        noise = tf.random_normal(tf.shape(grad), 0.0, stddev, dtype=grad.dtype)
+        gradients.append((grad + noise, var))
+      clones_gradients = gradients
+
     # Create gradient updates.
     grad_updates = optimizer.apply_gradients(clones_gradients,
                                              global_step=global_step)
@@ -552,6 +577,9 @@ def main(_):
     # Merge all summaries together.
     summary_op = tf.summary.merge(list(summaries), name='summary_op')
 
+    # session config
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
 
     ###########################
     # Kicks off the training. #
@@ -565,9 +593,12 @@ def main(_):
         summary_op=summary_op,
         number_of_steps=FLAGS.max_number_of_steps,
         log_every_n_steps=FLAGS.log_every_n_steps,
+        saver=tf.train.Saver(max_to_keep=10000),
         save_summaries_secs=FLAGS.save_summaries_secs,
         save_interval_secs=FLAGS.save_interval_secs,
-        sync_optimizer=optimizer if FLAGS.sync_replicas else None)
+        sync_optimizer=optimizer if FLAGS.sync_replicas else None,
+      session_config=config
+    )
 
 
 if __name__ == '__main__':

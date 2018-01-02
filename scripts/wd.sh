@@ -15,60 +15,79 @@
 # ==============================================================================
 #
 # This script performs the following operations:
-# 1. Downloads the Cifar10 dataset
-# 2. Trains a CifarNet model on the Cifar10 training set.
-# 3. Evaluates the model on the Cifar10 testing set.
+# 1. Downloads the MNIST dataset
+# 2. Trains a LeNet model on the MNIST training set.
+# 3. Evaluates the model on the MNIST testing set.
 #
 # Usage:
 # cd slim
-# ./scripts/train_cifarnet_on_cifar10.sh
+# ./slim/scripts/train_lenet_on_mnist.sh
 set -e
-
 home=`env | grep ^HOME= | cut -c 6-`
-# config
+# gpu
+gpu_tr=$1
+gpu_ts=
+# model
 model_name=lenet
-data_name=mnist
-wd=0.001
+data_name=cifar10
+preprocess=custom
+image_size=32
+# training
+tr_batch_size=512
+ts_batch_size=500
 lr=0.01
-lr_policy=polynomial
-# t=`date +%m%d%H%M%S`
+lr_policy=exponential
+# log
+save_interval=10
 t=`date +%m%d%H%M%S`
 
-# Where the checkpoint and logs will be saved to.
-TRAIN_DIR="${home}/exp/slim/${data_name}-${model_name}-wd${wd}-lr${lr}-${t}"
-
 # Where the dataset is saved to.
-DATASET_DIR=/tmp/cifar10
+DATASET_DIR=/tmp/${data_name}
 
 # Download the dataset
 python download_and_convert_data.py \
-  --dataset_name=cifar10 \
+  --dataset_name=${data_name} \
   --dataset_dir=${DATASET_DIR}
 
 # Run training.
+for w in 1 0.1 0.01 0.001 0.0001 0.00001;
+do
+TRAIN_DIR="${home}/exp/slim/wd-${w}-${data_name}-${model_name}-lr${lr}-${t}"
 python train_image_classifier.py \
   --train_dir=${TRAIN_DIR} \
-  --dataset_name=cifar10 \
+  --dataset_name=${data_name} \
   --dataset_split_name=train \
   --dataset_dir=${DATASET_DIR} \
-  --model_name=cifarnet \
-  --preprocessing_name=cifarnet \
-  --max_number_of_steps=10000 \
-  --batch_size=128 \
-  --save_interval_secs=120 \
-  --save_summaries_secs=120 \
-  --log_every_n_steps=100 \
-  --optimizer=sgd \
+  --model_name=${model_name} \
+  --preprocessing_name=${preprocess} \
+  --train_image_size=${image_size} \
+  --max_number_of_steps=100000 \
+  --decay_steps=2000 \
+  --batch_size=${tr_batch_size} \
   --learning_rate=${lr} \
-  --learning_rate_decay_factor=0.1 \
-  --num_epochs_per_decay=200 \
-  --weight_decay=${wd}
+  --save_interval_secs=${save_interval} \
+  --save_summaries_secs=${save_interval} \
+  --log_every_n_steps=1000 \
+  --optimizer=sgd \
+  --learning_rate_decay_type=${lr_policy} \
+  --learning_rate_decay_factor=0.91 \
+  --weight_decay=${w} \
+  --clone_on_cpu=0 \
+  --gpu=${gpu_tr} \
+  --num_clones=2 &
 
 # Run evaluation.
+
 python eval_image_classifier.py \
   --checkpoint_path=${TRAIN_DIR} \
   --eval_dir=${TRAIN_DIR} \
-  --dataset_name=cifar10 \
+  --batch_size=${ts_batch_size} \
+  --dataset_name=${data_name} \
   --dataset_split_name=test \
   --dataset_dir=${DATASET_DIR} \
-  --model_name=cifarnet
+  --eval_image_size=${image_size} \
+  --timeout=`expr ${save_interval} + 5` \
+  --model_name=${model_name} \
+  --preprocessing_name=${preprocess} \
+  --gpu=${gpu_ts}
+done

@@ -23,7 +23,7 @@ import tensorflow as tf
 slim = tf.contrib.slim
 
 
-def preprocess_image(image, output_height, output_width, is_training):
+def preprocess_image(image, output_height, output_width, is_training, random_crop=False):
   """Preprocesses the given image.
 
   Args:
@@ -39,6 +39,6 @@ def preprocess_image(image, output_height, output_width, is_training):
   image = tf.to_float(image)
   image = tf.image.resize_image_with_crop_or_pad(
       image, output_width, output_height)
-  image = tf.subtract(image, 128.0)
-  image = tf.div(image, 128.0)
-  return image
+  # image = tf.subtract(image, 128.0)
+  # image = tf.div(image, 128.0)
+  return tf.image.per_image_standardization(image)

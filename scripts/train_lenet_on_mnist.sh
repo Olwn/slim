@@ -23,41 +23,73 @@
 # cd slim
 # ./slim/scripts/train_lenet_on_mnist.sh
 set -e
+home=`env | grep ^HOME= | cut -c 6-`
+# gpu
+gpu_tr=$1
+gpu_ts=
+# model
+model_name=lenet
+data_name=cifar10
+preprocess=custom
+image_size=32
+# training
+tr_batch_size=32
+ts_batch_size=500
+lr=0.01
+lr_policy=exponential
+# log
+save_interval=60
+t=`date +%m%d%H%M%S`
 
 # Where the checkpoint and logs will be saved to.
-TRAIN_DIR=/tmp/lenet-model
-
+echo ${TRAIN_DIR}
 # Where the dataset is saved to.
-DATASET_DIR=/tmp/mnist
+DATASET_DIR=/tmp/${data_name}
 
 # Download the dataset
 python download_and_convert_data.py \
-  --dataset_name=mnist \
+  --dataset_name=${data_name} \
   --dataset_dir=${DATASET_DIR}
 
 # Run training.
+for w in 1 0.1 0.01 0.001 0.0001 0.00001;
+do
+TRAIN_DIR="${home}/exp/slim/${data_name}-${model_name}-wd${w}-lr${lr}-${t}"
 python train_image_classifier.py \
   --train_dir=${TRAIN_DIR} \
-  --dataset_name=mnist \
+  --dataset_name=${data_name} \
   --dataset_split_name=train \
   --dataset_dir=${DATASET_DIR} \
-  --model_name=lenet \
-  --preprocessing_name=lenet \
-  --max_number_of_steps=20000 \
-  --batch_size=50 \
-  --learning_rate=0.01 \
-  --save_interval_secs=60 \
-  --save_summaries_secs=60 \
-  --log_every_n_steps=100 \
+  --model_name=${model_name} \
+  --preprocessing_name=${preprocess} \
+  --train_image_size=${image_size} \
+  --max_number_of_steps=100000 \
+  --decay_steps=2000 \
+  --batch_size=${tr_batch_size} \
+  --learning_rate=${lr} \
+  --save_interval_secs=${save_interval} \
+  --save_summaries_secs=${save_interval} \
+  --log_every_n_steps=1000 \
   --optimizer=sgd \
-  --learning_rate_decay_type=fixed \
-  --weight_decay=0
+  --learning_rate_decay_type=${lr_policy} \
+  --learning_rate_decay_factor=0.91 \
+  --weight_decay=${w} \
+  --clone_on_cpu=0 \
+  --gpu=${gpu_tr} \
+  --num_clones=2 &
 
 # Run evaluation.
+
 python eval_image_classifier.py \
   --checkpoint_path=${TRAIN_DIR} \
   --eval_dir=${TRAIN_DIR} \
-  --dataset_name=mnist \
+  --batch_size=${ts_batch_size} \
+  --dataset_name=${data_name} \
   --dataset_split_name=test \
   --dataset_dir=${DATASET_DIR} \
-  --model_name=lenet
+  --eval_image_size=${image_size} \
+  --timeout=`expr ${save_interval} + 5` \
+  --model_name=${model_name} \
+  --preprocessing_name=${preprocess} \
+  --gpu=${gpu_ts}
+done

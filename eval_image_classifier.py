@@ -18,14 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
 import tensorflow as tf
+
+import math
+import os
 
 from datasets import dataset_factory
 from nets import nets_factory
 from preprocessing import preprocessing_factory
 
 slim = tf.contrib.slim
+
 
 tf.app.flags.DEFINE_integer(
     'batch_size', 50, 'The number of samples in each batch.')
@@ -79,8 +82,17 @@ tf.app.flags.DEFINE_float(
 tf.app.flags.DEFINE_integer(
     'eval_image_size', None, 'Eval image size')
 
+tf.app.flags.DEFINE_integer(
+  'timeout', 60, "maximum time for waiting new checkpoint"
+)
+
+tf.app.flags.DEFINE_string(
+  'gpu', "", "gpu list"
+)
+
 FLAGS = tf.app.flags.FLAGS
 
+os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpu
 
 def main(_):
   if not FLAGS.dataset_dir:
@@ -88,7 +100,7 @@ def main(_):
 
   tf.logging.set_verbosity(tf.logging.INFO)
   with tf.Graph().as_default():
-    tf_global_step = slim.get_or_create_global_step()
+    tf_global_step = tf.train.get_or_create_global_step()
 
     ######################
     # Select the dataset #
@@ -147,14 +159,16 @@ def main(_):
     else:
       variables_to_restore = slim.get_variables_to_restore()
 
+    labels_one_hot = slim.one_hot_encoding(labels, dataset.num_classes - FLAGS.labels_offset)
+    cross_entropy_loss = tf.losses.softmax_cross_entropy(labels_one_hot, logits)
     predictions = tf.argmax(logits, 1)
     labels = tf.squeeze(labels)
 
     # Define the metrics:
     names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
         'Accuracy': slim.metrics.streaming_accuracy(predictions, labels),
-        'Recall_5': slim.metrics.streaming_recall_at_k(
-            logits, labels, 5),
+        'Recall_5': slim.metrics.streaming_recall_at_k(logits, labels, 5),
+        'ValLoss': slim.metrics.streaming_mean(cross_entropy_loss)
     })
 
     # Print the summaries to screen.
@@ -178,6 +192,22 @@ def main(_):
 
     tf.logging.info('Evaluating %s' % checkpoint_path)
 
+    # session config
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    print("--------GPU: " + os.environ['CUDA_VISIBLE_DEVICES'])
+    slim.evaluation.evaluation_loop(
+      master=FLAGS.master,
+      checkpoint_dir=FLAGS.eval_dir,
+      logdir=os.path.join(FLAGS.eval_dir, 'eval'),
+      num_evals=num_batches,
+      eval_op=list(names_to_updates.values()),
+      variables_to_restore=variables_to_restore,
+      timeout=FLAGS.timeout,
+      session_config=config,
+      eval_interval_secs=5
+    )
+    """
     slim.evaluation.evaluate_once(
         master=FLAGS.master,
         checkpoint_path=checkpoint_path,
@@ -185,7 +215,36 @@ def main(_):
         num_evals=num_batches,
         eval_op=list(names_to_updates.values()),
         variables_to_restore=variables_to_restore)
+    """
 
+    # compute sharpness
+    coord = tf.train.Coordinator()
+    with tf.Session(config=config) as session:
+      wf = open(os.path.join(FLAGS.eval_dir, "sharpness.txt"), 'w')
+      threads = tf.train.start_queue_runners(session, coord)
+      for line in open(os.path.join(FLAGS.eval_dir, "checkpoint"), 'r').readlines()[-1:]:
+        ckp_path = line.split(':')[1].strip().replace("\"", '')
+        step_number = int(ckp_path.split('-')[-1])
+        tf.train.Saver().restore(session, ckp_path)
+        loss_before = session.run(cross_entropy_loss)
+        var_to_bounds = {}
+        for var in slim.get_model_variables():
+          val = session.run(var)
+          f = 1e-3 * (abs(val) + 1)
+          var_to_bounds[var] = (val - f , val + f)
+        bfgs_opt = tf.contrib.opt.ScipyOptimizerInterface(
+          -cross_entropy_loss, var_to_bounds=var_to_bounds, method='L-BFGS-B', options={
+            'maxiter': 100, 'maxls': 20, 'maxcor': 100})
+        bfgs_opt.minimize(session)
+        loss_after = session.run(cross_entropy_loss)
+        sharp = (loss_after - loss_before) / (1 + loss_before) * 100
+        write_str = "step: %d, before: %.5f, after: %.5f, sharp: %.5f" % (step_number, loss_before, loss_after, sharp)
+        wf.write(write_str + "\n")
+        tf.logging.info(write_str)
+
+      coord.request_stop()
+      coord.join(threads)
+    wf.close()
 
 if __name__ == '__main__':
   tf.app.run()

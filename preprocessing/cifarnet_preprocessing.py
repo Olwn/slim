@@ -31,7 +31,8 @@ def preprocess_for_train(image,
                          output_height,
                          output_width,
                          padding=_PADDING,
-                         add_image_summaries=True):
+                         add_image_summaries=True,
+                         augmentation=False):
   """Preprocesses the given image for training.
 
   Note that the actual resizing scale is sampled from
