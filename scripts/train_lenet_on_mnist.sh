@@ -33,16 +33,14 @@ data_name=cifar10
 preprocess=custom
 image_size=32
 # training
-tr_batch_size=32
+tr_batch_size=16
 ts_batch_size=500
 lr=0.01
 lr_policy=exponential
 # log
-save_interval=60
+save_interval=10
 t=`date +%m%d%H%M%S`
 
-# Where the checkpoint and logs will be saved to.
-echo ${TRAIN_DIR}
 # Where the dataset is saved to.
 DATASET_DIR=/tmp/${data_name}
 
@@ -52,9 +50,7 @@ python download_and_convert_data.py \
   --dataset_dir=${DATASET_DIR}
 
 # Run training.
-for w in 1 0.1 0.01 0.001 0.0001 0.00001;
-do
-TRAIN_DIR="${home}/exp/slim/${data_name}-${model_name}-wd${w}-lr${lr}-${t}"
+TRAIN_DIR="${home}/exp/slim/${data_name}-${model_name}-lr${lr}-${t}"
 python train_image_classifier.py \
   --train_dir=${TRAIN_DIR} \
   --dataset_name=${data_name} \
@@ -69,14 +65,14 @@ python train_image_classifier.py \
   --learning_rate=${lr} \
   --save_interval_secs=${save_interval} \
   --save_summaries_secs=${save_interval} \
-  --log_every_n_steps=1000 \
+  --log_every_n_steps=100 \
   --optimizer=sgd \
   --learning_rate_decay_type=${lr_policy} \
   --learning_rate_decay_factor=0.91 \
-  --weight_decay=${w} \
+  --weight_decay=0.0 \
   --clone_on_cpu=0 \
   --gpu=${gpu_tr} \
-  --num_clones=2 &
+  --num_clones=1 &
 
 # Run evaluation.
 
@@ -92,4 +88,3 @@ python eval_image_classifier.py \
   --model_name=${model_name} \
   --preprocessing_name=${preprocess} \
   --gpu=${gpu_ts}
-done
