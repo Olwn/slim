@@ -50,7 +50,7 @@ python download_and_convert_data.py \
   --dataset_dir=${DATASET_DIR}
 
 # Run training.
-TRAIN_DIR="${home}/exp/slim/${data_name}-${model_name}-lr${lr}-${t}"
+TRAIN_DIR="$/hdd/x/exp/slim/${data_name}-${model_name}-lr${lr}-${t}"
 python train_image_classifier.py \
   --train_dir=${TRAIN_DIR} \
   --dataset_name=${data_name} \

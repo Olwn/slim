@@ -507,6 +507,7 @@ def main(_):
     # Add 1-norm of all parameters
     all_v_flat = tf.concat([tf.reshape(v, [-1]) for v in slim.get_model_variables()], axis=0)
     summaries.add(tf.summary.histogram("all", all_v_flat))
+    # summaries.add(tf.summary.scalar("all_norm"), tf.norm())
 
     #################################
     # Configure the moving averages #

@@ -6,4 +6,4 @@ echo "waiting another task to be finished"
 sleep 10m
 done
 
-cd ~/slim && sh scripts/wd.sh "0,1"
+cd ~/slim && sh scripts/batch_size.sh "0,1"

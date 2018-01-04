@@ -28,7 +28,7 @@ home=`env | grep ^HOME= | cut -c 6-`
 gpu_tr=$1
 gpu_ts=
 # model
-model_name=lenet
+model_name=cifarnet
 data_name=cifar10
 preprocess=custom
 image_size=32
@@ -38,7 +38,7 @@ ts_batch_size=500
 lr=0.01
 lr_policy=exponential
 # log
-save_interval=10
+save_interval=100
 t=`date +%m%d%H%M%S`
 
 # Where the dataset is saved to.
@@ -50,9 +50,9 @@ python download_and_convert_data.py \
   --dataset_dir=${DATASET_DIR}
 
 # Run training.
-for w in 1 0.1 0.01 0.001 0.0001 0.00001;
+for w in 0.25 0.1 0.01 0.001 0.0001 0.00001;
 do
-TRAIN_DIR="${home}/exp/slim/wd-${w}-${data_name}-${model_name}-lr${lr}-${t}"
+TRAIN_DIR="/hdd/x/exp/slim/wd-${w}-${data_name}-${model_name}-lr${lr}-${t}"
 python train_image_classifier.py \
   --train_dir=${TRAIN_DIR} \
   --dataset_name=${data_name} \

@@ -218,32 +218,34 @@ def main(_):
     """
 
     # compute sharpness
-    coord = tf.train.Coordinator()
-    with tf.Session(config=config) as session:
-      wf = open(os.path.join(FLAGS.eval_dir, "sharpness.txt"), 'w')
-      threads = tf.train.start_queue_runners(session, coord)
-      for line in open(os.path.join(FLAGS.eval_dir, "checkpoint"), 'r').readlines()[-1:]:
-        ckp_path = line.split(':')[1].strip().replace("\"", '')
-        step_number = int(ckp_path.split('-')[-1])
-        tf.train.Saver().restore(session, ckp_path)
-        loss_before = session.run(cross_entropy_loss)
-        var_to_bounds = {}
-        for var in slim.get_model_variables():
-          val = session.run(var)
-          f = 1e-3 * (abs(val) + 1)
-          var_to_bounds[var] = (val - f , val + f)
-        bfgs_opt = tf.contrib.opt.ScipyOptimizerInterface(
-          -cross_entropy_loss, var_to_bounds=var_to_bounds, method='L-BFGS-B', options={
-            'maxiter': 100, 'maxls': 20, 'maxcor': 100})
-        bfgs_opt.minimize(session)
-        loss_after = session.run(cross_entropy_loss)
-        sharp = (loss_after - loss_before) / (1 + loss_before) * 100
-        write_str = "step: %d, before: %.5f, after: %.5f, sharp: %.5f" % (step_number, loss_before, loss_after, sharp)
-        wf.write(write_str + "\n")
-        tf.logging.info(write_str)
+    wf = open(os.path.join(FLAGS.eval_dir, "sharpness.txt"), 'w')
+    for factor in [1e-3, 1e-4, 1e-5]:
+      coord = tf.train.Coordinator()
+      with tf.Session(config=config) as session:
+        threads = tf.train.start_queue_runners(session, coord)
+        for line in open(os.path.join(FLAGS.eval_dir, "checkpoint"), 'r').readlines()[-1:]:
+          ckp_path = line.split(':')[1].strip().replace("\"", '')
+          step_number = int(ckp_path.split('-')[-1])
+          tf.train.Saver().restore(session, ckp_path)
+          loss_before = session.run(cross_entropy_loss)
+          var_to_bounds = {}
+          for var in slim.get_model_variables():
+            val = session.run(var)
+            f = factor * (abs(val) + 1)
+            var_to_bounds[var] = (val - f , val + f)
+          bfgs_opt = tf.contrib.opt.ScipyOptimizerInterface(
+            -cross_entropy_loss, var_to_bounds=var_to_bounds, method='L-BFGS-B', options={
+              'maxiter': 100, 'maxls': 20, 'maxcor': 100})
+          bfgs_opt.minimize(session)
+          loss_after = session.run(cross_entropy_loss)
+          sharp = (loss_after - loss_before) / (1 + loss_before) * 100
+          write_str = "factor: %.2E, step: %d, before: %.5f, after: %.5f, sharp: %.5f" % \
+                      (factor, step_number, loss_before, loss_after, sharp)
+          wf.write(write_str + "\n")
+          tf.logging.info(write_str)
 
-      coord.request_stop()
-      coord.join(threads)
+        coord.request_stop()
+        coord.join(threads)
     wf.close()
 
 if __name__ == '__main__':
