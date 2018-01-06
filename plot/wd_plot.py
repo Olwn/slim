@@ -27,7 +27,7 @@ def read_event_data(event_file, keys, read_histo=False):
 
 def plot(data, title, x_name, y_name, legend_prefix, save_to, x_limit=None, y_limit=None):
   fig, ax = plt.subplots()
-  colors = ['b', 'g', 'r', 'y', 'm']
+  colors = ['b', 'g', 'r', 'y', 'm', 'c']
   # colors = ['tab]
   markers = ['.', 'o', 'v', '^', 'd', '*', '+']
   line_count = 0
@@ -42,15 +42,15 @@ def plot(data, title, x_name, y_name, legend_prefix, save_to, x_limit=None, y_li
     window = 5
     xs = np.convolve(xs, np.ones(window) / window, mode='valid')
     ys = np.convolve(ys, np.ones(window) / window, mode='valid')
-    plt.plot(xs, ys, label=legend_prefix + "%.1E" % key, ms=1,
+    plt.plot(xs, ys, label=legend_prefix + "%.1E" % key, ms=2,
               marker=markers[idx], linestyle='-', linewidth=1, color=colors[idx])
     line_count += 1
 
   params = {'legend.fontsize': 14, 'legend.handlelength': 1}
   plt.rcParams.update(params)
-  legends = plt.legend(loc='best')
+  legends = plt.legend(loc='best', markerscale=2.0)
   for legobj in legends.legendHandles:
-    legobj.set_linewidth(3.0)
+    legobj.set_linewidth(1.0)
   if y_limit: plt.ylim(y_limit)
   plt.xlabel(x_name)
   plt.ylabel(y_name)
@@ -62,20 +62,20 @@ def plot(data, title, x_name, y_name, legend_prefix, save_to, x_limit=None, y_li
 if __name__ == '__main__':
   keys_train = {
     'losses/clone_0/softmax_cross_entropy_loss/value': {
-      'title': 'Cross Entropy Loss of Training', 'y_limit': (0.5, 1.6)},
+      'title': 'Cross Entropy Loss of Training', 'y_limit': (0, 1)},
     # 'total_loss_1': {'title': 'Total Training Loss', 'y_limit': (0.5, 2)}
     }
   keys_test = {
-    'eval/Accuracy': {'title': 'Evaluation Accuracy', 'y_name': 'Accuracy', 'y_limit': (0.6, 0.80)},
-    'eval/ValLoss': {'title': 'Evaluation Cross Entropy Loss', 'y_name': 'Loss', 'y_limit': (0.6, 1.2)}
+    'eval/Accuracy': {'title': 'Evaluation Accuracy', 'y_name': 'Accuracy', 'y_limit': (0.3, 0.7)},
+    'eval/ValLoss': {'title': 'Evaluation Cross Entropy Loss', 'y_name': 'Loss', 'y_limit': (0, 3)}
   }
 
   keys_hist = {
     'all': {'title': 'Weights Distribution'}
   }
-  # exp_dir = '/hdd/x/exp/'
-  exp_dir = '/home/x/exp/slim/'
-  exp_filter = '118'
+  exp_dir = '/hdd/x/exp/slim/'
+  # exp_dir = '/home/x/exp/slim/'
+  exp_filter = '946'
   data_train = {}
   data_test = {}
   data_hist = {}
@@ -83,7 +83,7 @@ if __name__ == '__main__':
     if not exp_filter in d: continue
     wd = re.search(r"(?<=wd-)[0-9\\.]*(?=-)", d).group()
     wd = float(wd)
-    if wd in [1.0, 0.1]: continue
+    if wd <= 0.0001: continue
     train_dir = os.path.join(exp_dir, d)
     events_files_train = [x for x in os.listdir(train_dir) if x.startswith('events')]
     data_train[wd] = read_event_data(os.path.join(train_dir, events_files_train[0]), keys_train)
@@ -111,8 +111,8 @@ if __name__ == '__main__':
   axis_n = len(data_hist)
 
   fig, axarr = plt.subplots(nrows=axis_n, ncols=1, sharex=True, figsize=plt.figaspect(3./4.))
-  colors = ['b', 'g', 'r', 'y', 'm']
-  x_range = (-0.2, 0.2)
+  colors = ['b', 'g', 'r', 'y', 'm', 'c']
+  x_range = (-0.1, 0.1)
   for idx, wd in enumerate(sorted(data_hist)):
     # print type(data_hist[wd]['all'][-1][1])
     # break
@@ -121,7 +121,12 @@ if __name__ == '__main__':
     weights = data_hist[wd]['all'][-1][1].bucket
     ax = axarr[idx]
     ax.set_xlim(x_range)
-    ax.hist(xs, weights=weights, bins=xs[:-1], range=x_range, label="wd=%.1E" % wd, color=colors[idx],
+
+    weights = [w / (xs[i] - xs[i-1]) for i, w in enumerate(weights) if i > 0]
+    w_sum = sum(weights)
+    weights = [w / w_sum for w in weights]
+    ax.set_ylim((0, np.mean(sorted(weights)[-50:-1])))
+    ax.hist(xs[1:], weights=weights, bins=xs[:-1], range=x_range, label="wd=%.1E" % wd, color=colors[idx],
             histtype='bar', density=False)
     ax.legend(loc='upper left')
   fig.tight_layout()

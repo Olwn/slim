@@ -33,12 +33,12 @@ data_name=cifar10
 preprocess=custom
 image_size=32
 # training
-tr_batch_size=512
+tr_batch_size=64
 ts_batch_size=500
 lr=0.01
 lr_policy=exponential
 # log
-save_interval=100
+save_interval=`expr 5 \* ${tr_batch_size} / 16`
 t=`date +%m%d%H%M%S`
 
 # Where the dataset is saved to.
@@ -50,7 +50,7 @@ python download_and_convert_data.py \
   --dataset_dir=${DATASET_DIR}
 
 # Run training.
-for w in 0.25 0.1 0.01 0.001 0.0001 0.00001;
+for w in 0.5 0.1 0.01 0.001 0.0001 0.00001;
 do
 TRAIN_DIR="/hdd/x/exp/slim/wd-${w}-${data_name}-${model_name}-lr${lr}-${t}"
 python train_image_classifier.py \

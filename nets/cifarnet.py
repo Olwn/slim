@@ -75,9 +75,8 @@ def cifarnet(images, num_classes=10, is_training=False,
     end_points['Flatten'] = net
     net = slim.fully_connected(net, 384, scope='fc3')
     end_points['fc3'] = net
-    net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-                       scope='dropout3')
-    net = slim.fully_connected(net, 192, scope='fc4')
+    # net = slim.dropout(net, dropout_keep_prob, is_training=is_training, scope='dropout3')
+    # net = slim.fully_connected(net, 192, scope='fc4')
     end_points['fc4'] = net
     if not num_classes:
       return net, end_points

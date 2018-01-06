@@ -27,11 +27,11 @@ def read_event_data(event_file, keys):
 
 def plot(data, title, x_name, y_name, legend_prefix, save_to, x_limit=None, y_limit=None):
   fig, ax = plt.subplots()
-  colors = ['b', 'g', 'r', 'y']
+  colors = ['b', 'g', 'r', 'y', 'c']
   # colors = ['tab]
   markers = ['.', 'o', 'v', '^', 'd', '*', '+']
   line_count = 0
-  fig, axarr = plt.subplots(ncols=2, sharey=True, figsize=plt.figaspect(3./8.))
+  fig, axarr = plt.subplots(ncols=2, sharey=True, figsize=plt.figaspect(3./6.))
   for idx, key in enumerate(sorted(data.keys())):
     # if idx % 2 == 0: continue
     axis = axarr[idx % 2]
@@ -43,7 +43,7 @@ def plot(data, title, x_name, y_name, legend_prefix, save_to, x_limit=None, y_li
     window = 5
     xs = np.convolve(xs, np.ones(window) / window, mode='valid')
     ys = np.convolve(ys, np.ones(window) / window, mode='valid')
-    axis.plot(xs, ys, label=legend_prefix + str(key), ms=1,
+    axis.plot(xs, ys, label=legend_prefix + str(key), ms=2,
               marker=markers[idx / 2], linestyle='-', linewidth=1, color=colors[idx / 2])
     line_count += 1
 
@@ -51,10 +51,10 @@ def plot(data, title, x_name, y_name, legend_prefix, save_to, x_limit=None, y_li
   params = {'legend.fontsize': 14, 'legend.handlelength': 1}
   # .rcParams.update(params)
   for ax in axarr:
-    legends = ax.legend(loc='best')
+    legends = ax.legend(loc='best', markerscale=2.0)
     #leg = plt.legend(keys, loc='upper right')
     for legobj in legends.legendHandles:
-      legobj.set_linewidth(3.0)
+      legobj.set_linewidth(1.0)
   # if x_limit: plt.xlim(x_limit)
   if y_limit: ax1.set_ylim(y_limit)
   ax1.set_xlabel(x_name)
@@ -69,22 +69,23 @@ if __name__ == '__main__':
   keys_train = {
     'global_step/sec': {'title': 'Training Speed', 'y_name': 'step/sec'},
     'losses/clone_0/softmax_cross_entropy_loss/value': {
-      'title': 'Cross Entropy Loss of Training', 'y_limit': (0.5, 1.4)},
+      'title': 'Cross Entropy Loss of Training', 'y_limit': (0, 1.2)},
     # 'total_loss_1': {'title': 'Total Training Loss', 'y_limit': (0.5, 2)}
     }
   keys_test = {
-    'eval/Accuracy': {'title': 'Evaluation Accuracy', 'y_name': 'Accuracy', 'y_limit': (0.6, 0.71)},
-    'eval/ValLoss': {'title': 'Evaluation Cross Entropy Loss', 'y_name': 'Loss', 'y_limit': (0.83, 1.5)}
+    'eval/Accuracy': {'title': 'Evaluation Accuracy', 'y_name': 'Accuracy', 'y_limit': (0.1, 0.75)},
+    'eval/ValLoss': {'title': 'Evaluation Cross Entropy Loss', 'y_name': 'Loss', 'y_limit': (1.3, 3)}
   }
-  exp_dir = '/home/x/exp/slim'
-  exp_filter = '246'
+  exp_dir = '/hdd/x/exp/slim'
+  exp_filter = '3051'
   data_train = {}
   data_test = {}
   for d in os.listdir(exp_dir):
     if not exp_filter in d: continue
-    batch = re.search(r"(?<=bs)\S*(?=-cifar)", d).group()
+    batch = re.search(r"(?<=bs)[0-9\\.]*(?=-)", d).group()
     batch = int(batch) * 2
-
+    print(batch)
+    if batch > 4096: continue
     train_dir = os.path.join(exp_dir, d)
     events_files_train = [x for x in os.listdir(train_dir) if x.startswith('events')]
     data_train[batch] = read_event_data(os.path.join(train_dir, events_files_train[0]), keys_train)

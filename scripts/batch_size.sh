@@ -49,9 +49,9 @@ python download_and_convert_data.py \
   --dataset_dir=${DATASET_DIR}
 
 # Run training.
-for bs in 16 32 64 128 256 512 1024 2048;
+for bs in 8 16 32 64 128 256 512 1024 2048 4096;
 do
-save_interval=`expr 10 \* ${bs} / 16`
+save_interval=`expr 5 \* ${bs} / 8`
 TRAIN_DIR="/hdd/x/exp/slim/bs${bs}-${data_name}-${model_name}-lr${lr}-${t}"
 python train_image_classifier.py \
   --train_dir=${TRAIN_DIR} \
