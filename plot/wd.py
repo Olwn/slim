@@ -130,4 +130,4 @@ if __name__ == '__main__':
             histtype='bar', density=False)
     ax.legend(loc='upper left')
   fig.tight_layout()
-  fig.savefig('./figures/wd-hist.png', dpi=300)
+  fig.savefig('./figures/wd-hist-%s.png' % exp_filter, dpi=300)
